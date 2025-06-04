@@ -150,12 +150,12 @@ class BlenderPlugin(DeadlinePlugin):
         progress = progress / float( self.totalFrames )
         self.SetProgress( progress * 100 )
         
-        if self.GetBooleanPluginInfoEntryWithDefault( "SupressOutput", True ):
+        if self.GetBooleanPluginInfoEntryWithDefault( "SuppressOutput", True ):
             self.SuppressThisLine()
         
     def HandleStdoutSaved(self):
         self.finishedFrames += 1
-        self.currentChunk = 0 # Avoid incorrect progress math after addtion
+        self.currentChunk = 0 # Avoid incorrect progress math after addition
         
         self.UpdateProgress()
         
