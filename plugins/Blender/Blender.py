@@ -7,7 +7,7 @@ from System.IO import *
 
 from Deadline.Plugins import DeadlinePlugin, PluginType
 from Deadline.Scripting import RepositoryUtils, SystemUtils, FileUtils, StringUtils
-
+import os
 import sys
 
 def GetDeadlinePlugin():
@@ -64,18 +64,33 @@ class BlenderPlugin(DeadlinePlugin):
         # Construct version-specific configuration path
         version_config_path = os.path.join(r"\\SRVDEADLINE\DeadlineRepository10\custom\Blender", f"Blender {blVersion}")
         
-        # Create version-specific configuration if it doesn't exist
-        if not os.path.exists(version_config_path):
+            # Create version-specific configuration if it doesn't exist
+            # Lock to avoid race condition if multiple workers setup at same time
+        try:
+            import shutil
+            lock_file = os.path.join(version_config_path, "setup.lock")
+
+            # Simple fallback lock using file creation
+            lock_acquired = False
             try:
-                # Copy base configuration to version-specific path
-                shutil.copytree(base_config_path, version_config_path)
-                self.LogInfo(f"Created configuration for Blender {blVersion}")
-            except Exception as e:
-                self.LogWarning(f"Could not create version-specific configuration: {e}")
+                if not os.path.exists(version_config_path):
+                    # Try to create lock file atomically
+                    lock_fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_RDWR)
+                    os.close(lock_fd)
+                    lock_acquired = True
+                    shutil.copytree(base_config_path, version_config_path)
+                    self.LogInfo(f"Created version-specific config for Blender {blVersion}")
+            finally:
+                # Release lock (delete file) if we created it
+                if lock_acquired and os.path.exists(lock_file):
+                    os.remove(lock_file)
+
+        except Exception as e:
+            self.LogWarning(f"Could not verify/copy base config: {e}")
 
         # Set environment variables for Blender configuration
         os.environ["BLENDER_USER_CONFIG"] = os.path.join(version_config_path, "blenderconfig")
-        os.environ["BLENDER_USER_SCRIPTS"] = version_config_path, "blenderscripts")
+        os.environ["BLENDER_USER_SCRIPTS"] = os.path.join(version_config_path, "blenderscripts")
             
         executable = ""
         try:
@@ -110,12 +125,14 @@ class BlenderPlugin(DeadlinePlugin):
         # Get Blender version from plugin info
         blVersion = self.GetPluginInfoEntryWithDefault("Version", "").lower()
         
-        # Get config path from environment or job settings
-        config_path = self.GetEnvironmentVariable("CONFIG_PATH", r"\\network\render\config")
+     
+        # Construct version-specific configuration path
+        version_config_path = os.path.join(r"\\SRVDEADLINE\DeadlineRepository10\custom\Blender", f"Blender {blVersion}")
+        
         
         # Construct specific config and scripts paths
-        blender_user_config = os.path.join(config_path, "blenderconfig")
-        blender_user_scripts = os.path.join(config_path, "blenderscripts")
+        blender_user_config = os.path.join(version_config_path, "blenderconfig")
+        blender_user_scripts = os.path.join(version_config_path, "blenderscripts")
         
         
         sceneFile = self.GetPluginInfoEntryWithDefault( "SceneFile", self.GetDataFilename() )
@@ -128,8 +145,6 @@ class BlenderPlugin(DeadlinePlugin):
             sceneFile = sceneFile.replace( "\\", "/" )
         
         renderArgument = " -b \"" + sceneFile + "\""
-         renderArgument += f" --user-config \"{blender_user_config}\""
-        renderArgument += f" --user-scripts \"{blender_user_scripts}\""
         renderArgument += f" --python \"{blender_user_scripts}\\BlenderForceGpuConfig.py\""
         renderArgument += " -t " + self.GetPluginInfoEntryWithDefault( "Threads", "0" )
         
