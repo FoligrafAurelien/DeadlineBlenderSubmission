@@ -7,7 +7,7 @@ from System.IO import *
 
 from Deadline.Plugins import DeadlinePlugin, PluginType
 from Deadline.Scripting import RepositoryUtils, SystemUtils, FileUtils, StringUtils
-
+import os
 import sys
 
 def GetDeadlinePlugin():
@@ -55,10 +55,35 @@ class BlenderPlugin(DeadlinePlugin):
     
     def RenderExecutable(self):
         build = self.GetPluginInfoEntryWithDefault( "Build", "None" ).lower()
+        # Get Blender version from plugin info
+        blVersion = self.GetPluginInfoEntryWithDefault("Version", "").lower()
+        blRenderMode = self.GetPluginInfoEntryWithDefault("RenderMode", "").lower()
+
+        # Network path for Blender base configuration
+        base_config_path = r"\\SRVDEADLINE\DeadlineRepository10\custom\Blender\BlenderBase"
         
-        ### Get Version ##
-        blVersion = self.GetPluginInfoEntryWithDefault( "Version", "" ).lower()
+        # Construct version-specific configuration path
+        version_config_path = os.path.join(r"\\SRVDEADLINE\DeadlineRepository10\custom\Blender", f"Blender {blVersion}")
         
+            # Create version-specific configuration if it doesn't exist
+            # Lock to avoid race condition if multiple workers setup at same time
+        try:
+            import shutil
+            # Simple fallback lock using file creation
+            try:
+                if not os.path.exists(version_config_path):
+                    # Try to create lock file atomically
+                    shutil.copytree(base_config_path, version_config_path)
+                    self.LogInfo(f"Created version-specific config for Blender {blVersion}")
+            except:
+                self.LogWarning(f"Could not create folder for config: {e}")
+        except Exception as e:
+            self.LogWarning(f"Could not verify/copy base config: {e}")
+
+        # Set environment variables for Blender configuration
+        os.environ["BLENDER_USER_CONFIG"] = os.path.join(version_config_path, "blenderconfig")
+        os.environ["BLENDER_USER_SCRIPTS"] = os.path.join(version_config_path, "blenderscripts")
+            
         executable = ""
         try:
             executableList = self.GetConfigEntry( "Blender_%s_RenderExecutable" % ( blVersion ) )
@@ -89,6 +114,20 @@ class BlenderPlugin(DeadlinePlugin):
         return executable
         
     def RenderArgument(self):
+        # Get Blender version from plugin info
+        blVersion = self.GetPluginInfoEntryWithDefault("Version", "").lower()
+        blRenderMode = self.GetPluginInfoEntryWithDefault("RenderMode", "").upper()
+
+     
+        # Construct version-specific configuration path
+        version_config_path = os.path.join(r"\\SRVDEADLINE\DeadlineRepository10\custom\Blender", f"Blender {blVersion}")
+        
+        
+        # Construct specific config and scripts paths
+        blender_user_config = os.path.join(version_config_path, "blenderconfig")
+        blender_user_scripts = os.path.join(version_config_path, "blenderscripts")
+        
+        
         sceneFile = self.GetPluginInfoEntryWithDefault( "SceneFile", self.GetDataFilename() )
         sceneFile = RepositoryUtils.CheckPathMapping( sceneFile )
         if SystemUtils.IsRunningOnWindows():
@@ -99,6 +138,8 @@ class BlenderPlugin(DeadlinePlugin):
             sceneFile = sceneFile.replace( "\\", "/" )
         
         renderArgument = " -b \"" + sceneFile + "\""
+        renderArgument += f' --python-expr "import bpy; bpy.context.scene.cycles.device=\'{blRenderMode}\'"'
+        renderArgument += f' --python "{blender_user_scripts}\\BlenderForceGpuConfig.py"'
         renderArgument += " -t " + self.GetPluginInfoEntryWithDefault( "Threads", "0" )
         
         outputFile = self.GetPluginInfoEntryWithDefault( "OutputFile", "" )
@@ -150,12 +191,12 @@ class BlenderPlugin(DeadlinePlugin):
         progress = progress / float( self.totalFrames )
         self.SetProgress( progress * 100 )
         
-        if self.GetBooleanPluginInfoEntryWithDefault( "SuppressOutput", True ):
+        if self.GetBooleanPluginInfoEntryWithDefault( "SupressOutput", True ):
             self.SuppressThisLine()
         
     def HandleStdoutSaved(self):
         self.finishedFrames += 1
-        self.currentChunk = 0 # Avoid incorrect progress math after addition
+        self.currentChunk = 0 # Avoid incorrect progress math after addtion
         
         self.UpdateProgress()
         

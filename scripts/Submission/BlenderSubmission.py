@@ -124,8 +124,12 @@ def __main__( *args ):
     scriptDialog.AddComboControlToGrid( "BuildBox", "ComboControl", "None", ("None","32bit","64bit"), 6, 1, expand=False )
      ##Version##
     scriptDialog.AddControlToGrid( "BlenderVersionLabel", "LabelControl", "Blender Version: ", 7, 0, "This is the blender version from where the job is submitted", False )
-    scriptDialog.AddComboControlToGrid( "BlenderVersionBox", "ComboControl", "4.3", ("4.3","4.4","4.2"), 7, 1, expand=False )    
+    scriptDialog.AddComboControlToGrid( "BlenderVersionBox", "ComboControl", "4.5", ("4.4","4.5","5.0"), 7, 1, expand=False )    
     #####
+    ## GPU OR CPU ##
+    scriptDialog.AddControlToGrid( "RenderModeLabel", "LabelControl", "Use to render :", 8, 0, "Default is GPU but you can force CPU usage if GPU memory is too low", False )
+    scriptDialog.AddComboControlToGrid( "RenderModeBox", "ComboControl", "GPU", ("GPU","CPU"), 8, 1, expand=False )
+    ##
     scriptDialog.EndGrid()
     scriptDialog.EndTabPage()
     
@@ -161,6 +165,7 @@ def __main__( *args ):
             return
 
         scriptDialog.SetValue( "BlenderVersion", scriptDialog.GetValue( "BlenderVersionBox" ) )
+        scriptDialog.SetValue( "RenderModeLabel", scriptDialog.GetValue( "RenderModeBox" ) )
         scriptDialog.SetValue( "SceneBox", args[0] )
         scriptDialog.SetValue( "NameBox", Path.GetFileNameWithoutExtension( args[0] ) )
         
@@ -304,6 +309,8 @@ def SubmitButtonPressed(*args):
     
     ## Write Version ##
     writer.WriteLine( "Version=%s" % scriptDialog.GetValue( "BlenderVersionBox" ) )
+    writer.WriteLine( "RenderMode=%s" % scriptDialog.GetValue( "RenderModeBox" ) )
+
     #print("Blender version is this: %s" % (scriptDialog.GetValue( "BlenderVersion" )) )
 
     writer.Close()
