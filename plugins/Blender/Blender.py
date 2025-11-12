@@ -57,7 +57,8 @@ class BlenderPlugin(DeadlinePlugin):
         build = self.GetPluginInfoEntryWithDefault( "Build", "None" ).lower()
         # Get Blender version from plugin info
         blVersion = self.GetPluginInfoEntryWithDefault("Version", "").lower()
-    
+        blRenderMode = self.GetPluginInfoEntryWithDefault("RenderMode", "").lower()
+
         # Network path for Blender base configuration
         base_config_path = r"\\SRVDEADLINE\DeadlineRepository10\custom\Blender\BlenderBase"
         
@@ -68,23 +69,14 @@ class BlenderPlugin(DeadlinePlugin):
             # Lock to avoid race condition if multiple workers setup at same time
         try:
             import shutil
-            lock_file = os.path.join(version_config_path, "setup.lock")
-
             # Simple fallback lock using file creation
-            lock_acquired = False
             try:
                 if not os.path.exists(version_config_path):
                     # Try to create lock file atomically
-                    lock_fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_RDWR)
-                    os.close(lock_fd)
-                    lock_acquired = True
                     shutil.copytree(base_config_path, version_config_path)
                     self.LogInfo(f"Created version-specific config for Blender {blVersion}")
-            finally:
-                # Release lock (delete file) if we created it
-                if lock_acquired and os.path.exists(lock_file):
-                    os.remove(lock_file)
-
+            except:
+                self.LogWarning(f"Could not create folder for config: {e}")
         except Exception as e:
             self.LogWarning(f"Could not verify/copy base config: {e}")
 
@@ -124,7 +116,8 @@ class BlenderPlugin(DeadlinePlugin):
     def RenderArgument(self):
         # Get Blender version from plugin info
         blVersion = self.GetPluginInfoEntryWithDefault("Version", "").lower()
-        
+        blRenderMode = self.GetPluginInfoEntryWithDefault("RenderMode", "").upper()
+
      
         # Construct version-specific configuration path
         version_config_path = os.path.join(r"\\SRVDEADLINE\DeadlineRepository10\custom\Blender", f"Blender {blVersion}")
@@ -145,7 +138,8 @@ class BlenderPlugin(DeadlinePlugin):
             sceneFile = sceneFile.replace( "\\", "/" )
         
         renderArgument = " -b \"" + sceneFile + "\""
-        renderArgument += f" --python \"{blender_user_scripts}\\BlenderForceGpuConfig.py\""
+        renderArgument += f' --python-expr "import bpy; bpy.context.scene.cycles.device=\'{blRenderMode}\'"'
+        renderArgument += f' --python "{blender_user_scripts}\\BlenderForceGpuConfig.py"'
         renderArgument += " -t " + self.GetPluginInfoEntryWithDefault( "Threads", "0" )
         
         outputFile = self.GetPluginInfoEntryWithDefault( "OutputFile", "" )
